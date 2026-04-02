@@ -1,0 +1,18 @@
+services:
+  plex-recommender:
+    build: .
+    container_name: plex-recommender
+    ports:
+      - "3000:3000"
+    environment:
+      - TAUTULLI_URL=${TAUTULLI_URL}
+      - TAUTULLI_API_KEY=${TAUTULLI_API_KEY}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - SEERR_URL=${SEERR_URL}
+      - SEERR_API_KEY=${SEERR_API_KEY}
+    volumes:
+      - recommender-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  recommender-data:

@@ -32,10 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
+
+# SQLite database
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
 next-env.d.ts
