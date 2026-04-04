@@ -10,6 +10,7 @@ import {
   upsertUserRecommendation,
   getCachedTmdbDetails,
   isInLibrary,
+  getUserRatings,
 } from "./db";
 import type {
   ScoredRecommendation,
@@ -22,7 +23,9 @@ import type {
 
 const WEIGHT_FREQUENCY = 0.5;
 const WEIGHT_GENRE = 0.3;
-const WEIGHT_POPULARITY = 0.2;
+const WEIGHT_POPULARITY = 0.1;
+const WEIGHT_RATING = 0.2;
+const WEIGHT_TAGS = 0.3;
 
 // ─── Main Pipeline ──────────────────────────────────────────────────────────
 
@@ -78,6 +81,7 @@ export async function syncAndGenerate(
         title: item.title,
         watched_at: Math.floor(Date.now() / 1000),
         rating_key: item.ratingKey,
+        percent_complete: item.percentComplete ?? 100,
       });
 
       processed++;
@@ -145,6 +149,12 @@ export async function generateRecommendations(
     watchHistory.map((w) => `${w.tmdb_id}:${w.media_type}`)
   );
 
+  // Load user ratings: tmdbId -> rating value (-2..2)
+  const ratingsMap = new Map<number, number>();
+  for (const r of getUserRatings(userId)) {
+    ratingsMap.set(r.tmdb_id, r.rating);
+  }
+
   // ─── Step 1: Collect TMDB recommendations per watched title ──────────
   const rawRecommendations = new Map<
     number,
@@ -198,8 +208,9 @@ export async function generateRecommendations(
     }
   }
 
-  // ─── Step 2: Build user genre profile ─────────────────────────────────
+  // ─── Step 2: Build user genre and tag profiles ────────────────────────
   const genreWeights = buildGenreProfile(watchHistory);
+  const tagProfile = buildTagProfile(watchHistory, ratingsMap);
 
   // ─── Step 3: Score each recommendation ────────────────────────────────
   const maxAppearances = Math.max(
@@ -211,6 +222,10 @@ export async function generateRecommendations(
 
   for (const [, rec] of rawRecommendations) {
     try {
+      // Skip items the user has explicitly disliked
+      const directRating = ratingsMap.get(rec.tmdbId);
+      if (directRating !== undefined && directRating < 0) continue;
+
       // Fetch details (from cache if available)
       let details = getCachedTmdbDetails(rec.tmdbId);
       if (!details) {
@@ -221,6 +236,7 @@ export async function generateRecommendations(
       }
 
       const genreIds: number[] = JSON.parse(details.genres || "[]");
+      const candidateKeywords: number[] = JSON.parse(details.keywords || "[]");
 
       // Frequency score
       const frequencyScore = rec.appearances / maxAppearances;
@@ -231,11 +247,32 @@ export async function generateRecommendations(
       // Popularity score (normalized, capped at 1)
       const popularityScore = Math.min((details.popularity || 0) / 100, 1);
 
+      // Rating boost from sources: average (rating + 2) / 4 → [0, 1]
+      // Neutral (unrated sources) contribute 0.5
+      let ratingNumerator = 0;
+      let ratingDenominator = 0;
+      for (const source of rec.sources) {
+        const sourceRating = ratingsMap.get(source.tmdbId);
+        if (sourceRating !== undefined) {
+          ratingNumerator += (sourceRating + 2) / 4;
+          ratingDenominator++;
+        }
+      }
+      const ratingScore =
+        ratingDenominator > 0 ? ratingNumerator / ratingDenominator : 0.5;
+
+      // Tag overlap score: compare candidate keywords against rated-title tag profile
+      // Falls back to neutral (0.5) when tag data is missing for either side
+      const rawTagScore = computeTagScore(candidateKeywords, tagProfile);
+      const tagScore = rawTagScore !== null ? rawTagScore : 0.5;
+
       // Combined score
       const finalScore =
         frequencyScore * WEIGHT_FREQUENCY +
         genreScore * WEIGHT_GENRE +
-        popularityScore * WEIGHT_POPULARITY;
+        popularityScore * WEIGHT_POPULARITY +
+        ratingScore * WEIGHT_RATING +
+        tagScore * WEIGHT_TAGS;
 
       // Primary source (the one that contributed the most)
       const primarySource = rec.sources[0];
@@ -477,6 +514,65 @@ function getTopKeywordIds(
     .sort((a, b) => b[1] - a[1])
     .slice(0, count)
     .map(([id]) => id);
+}
+
+/**
+ * Build a keyword (tag) preference profile from rated watch history.
+ *
+ * Only rated titles contribute. Each keyword in a liked title gets a positive
+ * weight; each keyword in a disliked title gets a negative weight.
+ * Weight range: rating / 2  →  -1 (hated) … +1 (loved)
+ */
+function buildTagProfile(
+  watchHistory: WatchHistoryRow[],
+  ratingsMap: Map<number, number>
+): Map<number, number> {
+  const tagWeights = new Map<number, number>();
+  for (const item of watchHistory) {
+    const rating = ratingsMap.get(item.tmdb_id);
+    if (rating === undefined) continue; // skip unrated items
+    const cached = getCachedTmdbDetails(item.tmdb_id);
+    if (!cached) continue;
+    const keywords: number[] = JSON.parse(cached.keywords || "[]");
+    const weight = rating / 2; // -2..2 → -1..1
+    for (const kw of keywords) {
+      tagWeights.set(kw, (tagWeights.get(kw) || 0) + weight);
+    }
+  }
+  return tagWeights;
+}
+
+/**
+ * Score a candidate title's keywords against the user's tag profile.
+ *
+ * Returns a value in [0, 1]:
+ *   - 1.0 = all candidate tags match highly-liked content
+ *   - 0.5 = neutral (no overlap or balanced liked/disliked)
+ *   - 0.0 = tags strongly overlap with disliked content
+ *
+ * Returns null when tag data is unavailable (caller should use fallback).
+ */
+function computeTagScore(
+  candidateKeywords: number[],
+  tagProfile: Map<number, number>
+): number | null {
+  if (tagProfile.size === 0 || candidateKeywords.length === 0) return null;
+
+  // Sum of positive profile weights — used as the normalization ceiling
+  let positiveSum = 0;
+  for (const v of tagProfile.values()) {
+    if (v > 0) positiveSum += v;
+  }
+  if (positiveSum === 0) return null;
+
+  let rawScore = 0;
+  for (const kw of candidateKeywords) {
+    rawScore += tagProfile.get(kw) || 0;
+  }
+
+  // Clamp to [-positiveSum, positiveSum], then map to [0, 1]
+  const clamped = Math.max(-positiveSum, Math.min(positiveSum, rawScore));
+  return (clamped / positiveSum + 1) / 2;
 }
 
 function deduplicateRecommendations(

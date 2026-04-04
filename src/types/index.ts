@@ -13,6 +13,7 @@ export interface WatchHistoryItem {
   mediaType: "movie" | "tv";
   grandparentTitle?: string;
   grandparentRatingKey?: string;
+  percentComplete?: number;
 }
 
 export interface LibraryItem {
@@ -171,6 +172,15 @@ export interface WatchHistoryRow {
   title: string;
   watched_at: number | null;
   rating_key: string | null;
+  percent_complete?: number;
+}
+
+export interface UserRatingRow {
+  user_id: string;
+  tmdb_id: number;
+  media_type: string;
+  rating: number; // -2, -1, 0, 1, 2
+  rated_at: number;
 }
 
 export interface UserRecommendationRow {

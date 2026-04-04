@@ -64,6 +64,51 @@ function tmdbUrl(path: string, params: Record<string, string> = {}): string {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
+export interface TMDBMultiResult {
+  id: number;
+  mediaType: "movie" | "tv";
+  title: string;
+  year: string;
+  posterPath: string | null;
+}
+
+/**
+ * Search TMDB across movies and TV shows. Returns up to `limit` results.
+ */
+export async function searchMulti(
+  query: string,
+  limit = 10
+): Promise<TMDBMultiResult[]> {
+  const url = tmdbUrl("/search/multi", { query, include_adult: "false" });
+  const res = await rateLimitedFetch(url);
+  if (!res.ok) {
+    console.error(`TMDB multi-search failed: ${res.status}`);
+    return [];
+  }
+
+  const json = await res.json();
+  const raw: Array<{
+    id: number;
+    media_type: string;
+    title?: string;
+    name?: string;
+    release_date?: string;
+    first_air_date?: string;
+    poster_path?: string | null;
+  }> = json.results ?? [];
+
+  return raw
+    .filter((r) => r.media_type === "movie" || r.media_type === "tv")
+    .slice(0, limit)
+    .map((r) => ({
+      id: r.id,
+      mediaType: r.media_type as "movie" | "tv",
+      title: r.title || r.name || "",
+      year: (r.release_date || r.first_air_date || "").substring(0, 4),
+      posterPath: r.poster_path ?? null,
+    }));
+}
+
 /**
  * Search TMDB by title.  Returns the first match or null.
  */

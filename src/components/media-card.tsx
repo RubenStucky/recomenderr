@@ -5,12 +5,14 @@ import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import type { ScoredRecommendation } from "@/types";
 import { RequestButton } from "./request-button";
+import { RatingWidget } from "./rating-widget";
 
 interface MediaCardProps {
   item: ScoredRecommendation;
+  userId?: string;
 }
 
-export function MediaCard({ item }: MediaCardProps) {
+export function MediaCard({ item, userId }: MediaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const posterUrl = item.posterPath
     ? `https://image.tmdb.org/t/p/w300${item.posterPath}`
@@ -55,6 +57,13 @@ export function MediaCard({ item }: MediaCardProps) {
             <p className="text-xs text-amber-400 mb-2">
               ★ {item.voteAverage.toFixed(1)}
             </p>
+          )}
+          {item.inLibrary && userId && (
+            <RatingWidget
+              userId={userId}
+              tmdbId={item.tmdbId}
+              mediaType={item.mediaType}
+            />
           )}
           {!item.inLibrary && (
             <RequestButton
