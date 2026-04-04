@@ -7,12 +7,14 @@ interface RecommendationGridProps {
   title: string;
   items: ScoredRecommendation[];
   emptyMessage?: string;
+  userId?: string;
 }
 
 export function RecommendationGrid({
   title,
   items,
   emptyMessage = "No recommendations yet.",
+  userId,
 }: RecommendationGridProps) {
   if (items.length === 0) {
     return (
@@ -28,7 +30,7 @@ export function RecommendationGrid({
       <h2 className="text-lg font-semibold text-foreground px-1">{title}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {items.map((item) => (
-          <MediaCard key={`${item.tmdbId}-${item.mediaType}`} item={item} />
+          <MediaCard key={`${item.tmdbId}-${item.mediaType}`} item={item} userId={userId} />
         ))}
       </div>
     </section>

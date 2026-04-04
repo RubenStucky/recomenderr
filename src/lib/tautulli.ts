@@ -54,10 +54,13 @@ export async function getUsers(): Promise<TautulliUser[]> {
 /**
  * Fetch watch history for a user.
  * Returns deduplicated entries at movie/show level.
+ * Only includes items that were meaningfully watched (>=80% complete).
+ * For TV shows: average percent_complete across episodes >= 80,
+ * OR at least 60% of episodes have percent_complete >= 80.
  */
 export async function getWatchHistory(
   userId: string,
-  limit: number = 50
+  limit: number = 1000
 ): Promise<WatchHistoryItem[]> {
   interface RawHistoryResponse {
     data: Array<{
@@ -69,6 +72,7 @@ export async function getWatchHistory(
       grandparent_rating_key: string;
       media_type: string;
       stopped: number;
+      percent_complete: number;
     }>;
     recordsTotal: number;
   }
@@ -81,41 +85,79 @@ export async function getWatchHistory(
   });
 
   const rows = data.data || [];
-  const seen = new Set<string>();
-  const results: WatchHistoryItem[] = [];
+
+  // Deduplicated movies: title -> WatchHistoryItem
+  const moviesMap = new Map<string, WatchHistoryItem>();
+
+  // TV shows: title -> episode percent_complete values
+  const showsMap = new Map<
+    string,
+    {
+      title: string;
+      year: string;
+      ratingKey: string;
+      grandparentTitle: string;
+      grandparentRatingKey: string;
+      percentCompletes: number[];
+    }
+  >();
 
   for (const row of rows) {
-    // Determine media type — Tautulli uses "movie", "episode", "track", etc.
-    let mediaType: "movie" | "tv";
-    let title: string;
-    let ratingKey: string;
+    const pct =
+      typeof row.percent_complete === "number" ? row.percent_complete : 0;
 
     if (row.media_type === "movie") {
-      mediaType = "movie";
-      title = row.title;
-      ratingKey = row.rating_key;
+      // Only count if >= 80% watched
+      if (pct < 80) continue;
+      const key = row.title;
+      if (!moviesMap.has(key)) {
+        moviesMap.set(key, {
+          title: row.title,
+          year: row.year ? String(row.year) : "",
+          ratingKey: row.rating_key,
+          mediaType: "movie",
+          percentComplete: pct,
+        });
+      }
     } else if (row.media_type === "episode") {
-      // Deduplicate TV shows by grandparent (show-level)
-      mediaType = "tv";
-      title = row.grandparent_title || row.title;
-      ratingKey = row.grandparent_rating_key || row.rating_key;
-    } else {
-      continue; // skip music, etc.
+      const showTitle = row.grandparent_title || row.title;
+      const existing = showsMap.get(showTitle);
+      if (existing) {
+        existing.percentCompletes.push(pct);
+      } else {
+        showsMap.set(showTitle, {
+          title: showTitle,
+          year: row.year ? String(row.year) : "",
+          ratingKey: row.grandparent_rating_key || row.rating_key,
+          grandparentTitle: row.grandparent_title,
+          grandparentRatingKey: row.grandparent_rating_key,
+          percentCompletes: [pct],
+        });
+      }
     }
+    // Skip music, trailers, etc.
+  }
 
-    const dedupKey = `${mediaType}:${title}`;
-    if (seen.has(dedupKey)) continue;
-    seen.add(dedupKey);
+  const results: WatchHistoryItem[] = Array.from(moviesMap.values());
+
+  for (const [, show] of showsMap) {
+    const { percentCompletes } = show;
+    const avgPct =
+      percentCompletes.reduce((a, b) => a + b, 0) / percentCompletes.length;
+    const fractionComplete =
+      percentCompletes.filter((p) => p >= 80).length / percentCompletes.length;
+
+    // Include show if average >= 80 OR at least 60% of episodes are >= 80
+    if (avgPct < 80 && fractionComplete < 0.6) continue;
 
     results.push({
-      title,
-      year: row.year ? String(row.year) : "",
-      ratingKey,
-      mediaType,
-      grandparentTitle:
-        mediaType === "tv" ? row.grandparent_title : undefined,
-      grandparentRatingKey:
-        mediaType === "tv" ? row.grandparent_rating_key : undefined,
+      title: show.title,
+      year: show.year,
+      ratingKey: show.ratingKey,
+      mediaType: "tv",
+      grandparentTitle: show.grandparentTitle,
+      grandparentRatingKey: show.grandparentRatingKey,
+      percentComplete: Math.round(avgPct),
     });
   }
 

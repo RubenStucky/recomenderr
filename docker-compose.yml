@@ -1,9 +1,14 @@
+# Plex Recommender - fork van RubenStucky/recomenderr, eigen aanpassingen op branch vibe-coding-v2
+# Bouwt lokaal vanuit Dockerfile (geen externe image) — altijd 'docker compose up -d --build' bij updates
+# Variabelen komen uit .env (nooit committen!) — zie .env.example voor de vereiste keys
+# Draait in dezelfde stack als Tautulli — gebruik interne Docker hostnamen in .env (bijv. http://tautulli:8181)
+
 services:
   plex-recommender:
-    build: .
+    build: . # Bouwt image vanuit lokale Dockerfile
     container_name: plex-recommender
     ports:
-      - "3000:3000"
+      - "3000:3000" # Web UI bereikbaar op http://<host>:3000
     environment:
       - TAUTULLI_URL=${TAUTULLI_URL}
       - TAUTULLI_API_KEY=${TAUTULLI_API_KEY}
@@ -11,7 +16,7 @@ services:
       - SEERR_URL=${SEERR_URL}
       - SEERR_API_KEY=${SEERR_API_KEY}
     volumes:
-      - recommender-data:/app/data
+      - recommender-data:/app/data # SQLite cache (7-day TTL voor TMDB metadata)
     restart: unless-stopped
 
 volumes:

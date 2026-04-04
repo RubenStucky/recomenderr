@@ -50,6 +50,16 @@ function initializeSchema(database: Database.Database) {
       title TEXT NOT NULL,
       watched_at INTEGER,
       rating_key TEXT,
+      percent_complete REAL DEFAULT 0,
+      PRIMARY KEY (user_id, tmdb_id, media_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS user_ratings (
+      user_id TEXT NOT NULL,
+      tmdb_id INTEGER NOT NULL,
+      media_type TEXT NOT NULL,
+      rating INTEGER NOT NULL,
+      rated_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, tmdb_id, media_type)
     );
 
@@ -72,7 +82,25 @@ function initializeSchema(database: Database.Database) {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (tmdb_id, media_type)
     );
+
+    CREATE TABLE IF NOT EXISTS user_season_ratings (
+      user_id TEXT NOT NULL,
+      tmdb_id INTEGER NOT NULL,
+      season INTEGER NOT NULL,
+      rating INTEGER NOT NULL,
+      rated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, tmdb_id, season)
+    );
   `);
+
+  // Migrations for existing databases
+  try {
+    database.exec(
+      "ALTER TABLE watch_history ADD COLUMN percent_complete REAL DEFAULT 0"
+    );
+  } catch {
+    // Column already exists — ignore
+  }
 }
 
 // ─── Query helpers ──────────────────────────────────────────────────────────
@@ -152,15 +180,16 @@ export function upsertWatchHistory(row: import("@/types").WatchHistoryRow) {
   const db = getDb();
   db.prepare(
     `INSERT OR REPLACE INTO watch_history
-     (user_id, tmdb_id, media_type, title, watched_at, rating_key)
-     VALUES (?, ?, ?, ?, ?, ?)`
+     (user_id, tmdb_id, media_type, title, watched_at, rating_key, percent_complete)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     row.user_id,
     row.tmdb_id,
     row.media_type,
     row.title,
     row.watched_at,
-    row.rating_key
+    row.rating_key,
+    row.percent_complete ?? 0
   );
 }
 
@@ -237,4 +266,105 @@ export function upsertLibraryContent(
 export function clearLibraryContent() {
   const db = getDb();
   db.prepare("DELETE FROM library_content").run();
+}
+
+// ─── User Ratings ────────────────────────────────────────────────────────────
+
+export function upsertUserRating(row: import("@/types").UserRatingRow) {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR REPLACE INTO user_ratings
+     (user_id, tmdb_id, media_type, rating, rated_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(row.user_id, row.tmdb_id, row.media_type, row.rating, row.rated_at);
+}
+
+export function getUserRating(
+  userId: string,
+  tmdbId: number,
+  mediaType: string
+): import("@/types").UserRatingRow | undefined {
+  const db = getDb();
+  return db
+    .prepare(
+      "SELECT * FROM user_ratings WHERE user_id = ? AND tmdb_id = ? AND media_type = ?"
+    )
+    .get(userId, tmdbId, mediaType) as
+    | import("@/types").UserRatingRow
+    | undefined;
+}
+
+export function getUserRatings(userId: string): import("@/types").UserRatingRow[] {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM user_ratings WHERE user_id = ?")
+    .all(userId) as import("@/types").UserRatingRow[];
+}
+
+// ─── Season Ratings ──────────────────────────────────────────────────────────
+
+export interface UserSeasonRatingRow {
+  user_id: string;
+  tmdb_id: number;
+  season: number;
+  rating: number;
+  rated_at: number;
+}
+
+export function upsertUserSeasonRating(row: UserSeasonRatingRow) {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR REPLACE INTO user_season_ratings
+     (user_id, tmdb_id, season, rating, rated_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(row.user_id, row.tmdb_id, row.season, row.rating, row.rated_at);
+}
+
+export function getUserSeasonRatings(userId: string): UserSeasonRatingRow[] {
+  const db = getDb();
+  return db
+    .prepare("SELECT * FROM user_season_ratings WHERE user_id = ? ORDER BY tmdb_id, season")
+    .all(userId) as UserSeasonRatingRow[];
+}
+
+export function getWatchHistoryWithMeta(userId: string) {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT wh.tmdb_id, wh.media_type, wh.title, wh.watched_at,
+              tc.year, tc.poster_path
+       FROM watch_history wh
+       LEFT JOIN tmdb_cache tc ON wh.tmdb_id = tc.tmdb_id AND wh.media_type = tc.media_type
+       WHERE wh.user_id = ?
+       ORDER BY wh.watched_at DESC NULLS LAST`
+    )
+    .all(userId) as Array<{
+      tmdb_id: number;
+      media_type: string;
+      title: string;
+      watched_at: number | null;
+      year: string | null;
+      poster_path: string | null;
+    }>;
+}
+
+export function searchLibrary(query: string) {
+  const db = getDb();
+  const pattern = `%${query}%`;
+  return db
+    .prepare(
+      `SELECT lc.tmdb_id, lc.media_type, lc.title, tc.year, tc.poster_path
+       FROM library_content lc
+       LEFT JOIN tmdb_cache tc ON lc.tmdb_id = tc.tmdb_id AND lc.media_type = tc.media_type
+       WHERE LOWER(lc.title) LIKE LOWER(?)
+       ORDER BY lc.title
+       LIMIT 20`
+    )
+    .all(pattern) as Array<{
+      tmdb_id: number;
+      media_type: string;
+      title: string;
+      year: string | null;
+      poster_path: string | null;
+    }>;
 }

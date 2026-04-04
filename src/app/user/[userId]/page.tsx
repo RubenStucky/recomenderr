@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film } from "lucide-react";
+import { ArrowLeft, Film, History, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SyncButton } from "@/components/sync-button";
 import { RecommendationRow } from "@/components/recommendation-row";
 import { RecommendationGrid } from "@/components/recommendation-grid";
+import { WatchHistoryModal, WatchHistoryItem } from "@/components/watch-history-modal";
+import { RateTitleDialog } from "@/components/rate-title-dialog";
 import type { RecommendationResult } from "@/types";
 
 export default function UserDashboardPage() {
@@ -18,6 +20,27 @@ export default function UserDashboardPage() {
   const [data, setData] = useState<RecommendationResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showRateDialog, setShowRateDialog] = useState(false);
+  const [externalRated, setExternalRated] = useState<WatchHistoryItem[]>([]);
+
+  function handleRated(item: { tmdbId: number; mediaType: string; title: string; year: string; posterPath: string | null; rating: number }) {
+    const entry: WatchHistoryItem = {
+      tmdbId: item.tmdbId,
+      mediaType: item.mediaType,
+      title: item.title,
+      year: item.year,
+      posterPath: item.posterPath,
+      watchedAt: null,
+      rating: item.rating,
+    };
+    setExternalRated((prev) => {
+      const key = `${item.tmdbId}-${item.mediaType}`;
+      const existing = prev.find((e) => `${e.tmdbId}-${e.mediaType}` === key);
+      if (!existing) return [...prev, entry];
+      return prev.map((e) => `${e.tmdbId}-${e.mediaType}` === key ? { ...e, rating: item.rating } : e);
+    });
+  }
 
   const fetchRecommendations = useCallback(async () => {
     setLoading(true);
@@ -64,10 +87,28 @@ export default function UserDashboardPage() {
               </h1>
             </div>
           </div>
-          <SyncButton
-            userId={userId}
-            onSyncComplete={fetchRecommendations}
-          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowHistory(true)}
+            >
+              <History className="size-3.5" />
+              Watch History
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRateDialog(true)}
+            >
+              <Star className="size-3.5" />
+              Rate a Title
+            </Button>
+            <SyncButton
+              userId={userId}
+              onSyncComplete={fetchRecommendations}
+            />
+          </div>
         </div>
       </header>
 
@@ -118,6 +159,7 @@ export default function UserDashboardPage() {
               <RecommendationRow
                 key={group.sourceTmdbId}
                 group={group}
+                userId={userId}
               />
             ))}
 
@@ -126,6 +168,7 @@ export default function UserDashboardPage() {
               <RecommendationGrid
                 title="Recommended for you"
                 items={data.recommendedForYou}
+                userId={userId}
               />
             )}
 
@@ -135,11 +178,19 @@ export default function UserDashboardPage() {
                 title="Not in your library"
                 items={data.notInLibrary}
                 emptyMessage="Everything recommended is already in your library!"
+                userId={userId}
               />
             )}
           </>
         )}
       </div>
+
+      {showHistory && (
+        <WatchHistoryModal userId={userId} onClose={() => setShowHistory(false)} externalItems={externalRated} />
+      )}
+      {showRateDialog && (
+        <RateTitleDialog userId={userId} onClose={() => setShowRateDialog(false)} onRated={handleRated} />
+      )}
     </main>
   );
 }

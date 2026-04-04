@@ -5,9 +5,10 @@ import type { BecauseYouWatched } from "@/types";
 
 interface RecommendationRowProps {
   group: BecauseYouWatched;
+  userId?: string;
 }
 
-export function RecommendationRow({ group }: RecommendationRowProps) {
+export function RecommendationRow({ group, userId }: RecommendationRowProps) {
   if (group.items.length === 0) return null;
 
   return (
@@ -28,7 +29,7 @@ export function RecommendationRow({ group }: RecommendationRowProps) {
             key={`${item.tmdbId}-${item.mediaType}`}
             style={{ scrollSnapAlign: "start" }}
           >
-            <MediaCard item={item} />
+            <MediaCard item={item} userId={userId} />
           </div>
         ))}
       </div>
