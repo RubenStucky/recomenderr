@@ -15,6 +15,7 @@ import {
 import type {
   ScoredRecommendation,
   BecauseYouWatched,
+  GenreCollection,
   RecommendationResult,
   WatchHistoryRow,
 } from "@/types";
@@ -26,6 +27,7 @@ const WEIGHT_GENRE = 0.3;
 const WEIGHT_POPULARITY = 0.1;
 const WEIGHT_RATING = 0.2;
 const WEIGHT_TAGS = 0.3;
+const WEIGHT_TMDB_RATING = 0.15;
 
 // ─── Main Pipeline ──────────────────────────────────────────────────────────
 
@@ -141,7 +143,7 @@ export async function generateRecommendations(
   const watchHistory = getWatchHistoryFromDb(userId);
 
   if (watchHistory.length === 0) {
-    return { becauseYouWatched: [], recommendedForYou: [], notInLibrary: [] };
+    return { becauseYouWatched: [], genreCollections: [], recommendedForYou: [], notInLibrary: [] };
   }
 
   // Build a set of watched TMDB IDs for quick lookup
@@ -266,13 +268,17 @@ export async function generateRecommendations(
       const rawTagScore = computeTagScore(candidateKeywords, tagProfile);
       const tagScore = rawTagScore !== null ? rawTagScore : 0.5;
 
+      // TMDB audience rating (normalized 0-10 → 0-1)
+      const tmdbRatingScore = Math.min((details.vote_average || 0) / 10, 1);
+
       // Combined score
       const finalScore =
         frequencyScore * WEIGHT_FREQUENCY +
         genreScore * WEIGHT_GENRE +
         popularityScore * WEIGHT_POPULARITY +
         ratingScore * WEIGHT_RATING +
-        tagScore * WEIGHT_TAGS;
+        tagScore * WEIGHT_TAGS +
+        tmdbRatingScore * WEIGHT_TMDB_RATING;
 
       // Primary source (the one that contributed the most)
       const primarySource = rec.sources[0];
@@ -363,11 +369,14 @@ export async function generateRecommendations(
 
   const becauseYouWatched = Array.from(sourceGroups.values())
     .sort((a, b) => b.items.length - a.items.length)
-    .slice(0, 5)
+    .slice(0, 10)
     .map((group) => ({
       ...group,
       items: group.items.slice(0, 15), // limit each row
     }));
+
+  // Genre-based collections — "Because you like [Genre] movies/shows"
+  const genreCollections = buildGenreCollections(scored, genreWeights);
 
   // "Recommended for you" — top 30 by score
   const recommendedForYou = scored.slice(0, 30);
@@ -396,7 +405,7 @@ export async function generateRecommendations(
     });
   }
 
-  return { becauseYouWatched, recommendedForYou, notInLibrary };
+  return { becauseYouWatched, genreCollections, recommendedForYou, notInLibrary };
 }
 
 /**
@@ -441,15 +450,20 @@ export function rebuildFromCache(userId: string): RecommendationResult | null {
 
   const becauseYouWatched = Array.from(sourceGroups.values())
     .sort((a, b) => b.items.length - a.items.length)
-    .slice(0, 5)
+    .slice(0, 10)
     .map((g) => ({ ...g, items: g.items.slice(0, 15) }));
+
+  // Rebuild genre profile from watch history to generate genre collections
+  const watchHistory = getWatchHistoryFromDb(userId);
+  const genreWeights = buildGenreProfile(watchHistory);
+  const genreCollections = buildGenreCollections(scored, genreWeights);
 
   const recommendedForYou = scored.slice(0, 30);
   const notInLibrary = scored
     .filter((r) => !r.inLibrary)
     .slice(0, 30);
 
-  return { becauseYouWatched, recommendedForYou, notInLibrary };
+  return { becauseYouWatched, genreCollections, recommendedForYou, notInLibrary };
 }
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
@@ -587,4 +601,49 @@ function deduplicateRecommendations(
     }
   }
   return Array.from(seen.values());
+}
+
+// TMDB genre ID → name mapping
+const GENRE_MAP: Record<number, string> = {
+  28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+  99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+  27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance",
+  878: "Sci-Fi", 10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+  10759: "Action & Adventure", 10762: "Kids", 10763: "News", 10764: "Reality",
+  10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics",
+};
+
+/**
+ * Build genre-based collection rows from scored recommendations.
+ * Groups recommendations by their top user genres and returns rows like
+ * "Because you like Action movies".
+ */
+function buildGenreCollections(
+  scored: ScoredRecommendation[],
+  genreWeights: Map<number, number>,
+): GenreCollection[] {
+  // Get top 5 user genres
+  const topGenres = Array.from(genreWeights.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id]) => id);
+
+  const collections: GenreCollection[] = [];
+
+  for (const genreId of topGenres) {
+    const genreName = GENRE_MAP[genreId];
+    if (!genreName) continue;
+
+    // Find recommendations that have this genre, sorted by score
+    const items = scored
+      .filter((r) => r.genres.includes(genreId))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 15);
+
+    if (items.length >= 3) {
+      collections.push({ genreName, genreId, items });
+    }
+  }
+
+  return collections;
 }

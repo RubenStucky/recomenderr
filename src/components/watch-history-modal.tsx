@@ -92,11 +92,11 @@ export function WatchHistoryModal({ userId, onClose, externalItems }: WatchHisto
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col bg-[#09090b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+        className="relative w-full sm:max-w-2xl max-h-[90vh] sm:max-h-[85vh] flex flex-col bg-[#09090b] border border-white/10 rounded-t-xl sm:rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

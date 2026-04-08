@@ -1,11 +1,13 @@
+const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+
 function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) {
+  if (!value && !isBuildPhase) {
     throw new Error(
       `Missing required environment variable: ${name}. Check your .env file.`
     );
   }
-  return value;
+  return value ?? "";
 }
 
 export const config = {

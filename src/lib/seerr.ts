@@ -21,15 +21,23 @@ async function seerrFetch(
  */
 export async function requestMedia(
   tmdbId: number,
-  mediaType: "movie" | "tv"
+  mediaType: "movie" | "tv",
+  seasons?: number[]
 ): Promise<SeerrResponse> {
   try {
+    const body: Record<string, unknown> = {
+      mediaType,
+      mediaId: tmdbId,
+    };
+
+    // For TV shows, include seasons if specified
+    if (mediaType === "tv" && seasons && seasons.length > 0) {
+      body.seasons = seasons;
+    }
+
     const res = await seerrFetch("/request", {
       method: "POST",
-      body: JSON.stringify({
-        mediaType,
-        mediaId: tmdbId,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {

@@ -288,3 +288,21 @@ function cacheRowToDetails(row: TMDBCacheRow): TMDBDetails {
     popularity: row.popularity,
   };
 }
+
+/**
+ * Get season info for a TV show from TMDB.
+ */
+export async function getTVSeasons(
+  tmdbId: number
+): Promise<Array<{ season_number: number; name: string; episode_count: number }>> {
+  const url = tmdbUrl(`/tv/${tmdbId}`);
+  const res = await rateLimitedFetch(url);
+  if (!res.ok) {
+    console.error(`TMDB TV details failed for ${tmdbId}: ${res.status}`);
+    return [];
+  }
+  const json = await res.json();
+  const seasons: Array<{ season_number: number; name: string; episode_count: number }> =
+    json.seasons ?? [];
+  return seasons;
+}

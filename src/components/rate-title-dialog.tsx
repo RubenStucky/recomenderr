@@ -118,11 +118,11 @@ export function RateTitleDialog({ userId, onClose, onRated }: RateTitleDialogPro
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm sm:p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md bg-[#09090b] border border-white/10 rounded-xl shadow-2xl overflow-visible"
+        className="relative w-full sm:max-w-md bg-[#09090b] border border-white/10 rounded-t-xl sm:rounded-xl shadow-2xl overflow-visible"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

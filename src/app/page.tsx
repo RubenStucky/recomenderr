@@ -1,16 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { UserCard } from "@/components/user-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TautulliUser } from "@/types";
 
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export default function HomePage() {
+  const router = useRouter();
   const [users, setUsers] = useState<TautulliUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Check for saved user cookie and redirect
+    const savedUserId = getCookie("selectedUserId");
+    if (savedUserId) {
+      router.replace(`/user/${savedUserId}`);
+      return;
+    }
+
     async function fetchUsers() {
       try {
         const res = await fetch("/api/users");

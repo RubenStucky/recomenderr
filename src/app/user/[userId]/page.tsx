@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Film, History, Star } from "lucide-react";
+import { Film, History, Star, MoreVertical, RefreshCw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SyncButton } from "@/components/sync-button";
-import { RecommendationRow } from "@/components/recommendation-row";
-import { RecommendationGrid } from "@/components/recommendation-grid";
+import { RecommendationRow, BywPickerRow, GenreCollectionRow, GenrePickerRow, TitledScrollRow } from "@/components/recommendation-row";
 import { WatchHistoryModal, WatchHistoryItem } from "@/components/watch-history-modal";
 import { RateTitleDialog } from "@/components/rate-title-dialog";
-import type { RecommendationResult } from "@/types";
+import { MediaDetailModal } from "@/components/media-detail-modal";
+import type { RecommendationResult, ScoredRecommendation } from "@/types";
 
 export default function UserDashboardPage() {
   const params = useParams<{ userId: string }>();
@@ -22,7 +22,28 @@ export default function UserDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showRateDialog, setShowRateDialog] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ScoredRecommendation | null>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [externalRated, setExternalRated] = useState<WatchHistoryItem[]>([]);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Set cookie so we remember this user
+  useEffect(() => {
+    document.cookie = `selectedUserId=${encodeURIComponent(userId)};path=/;max-age=${60 * 60 * 24 * 30};SameSite=Lax`;
+  }, [userId]);
+
+  // Close mobile menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMobileMenu(false);
+      }
+    }
+    if (showMobileMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showMobileMenu]);
 
   function handleRated(item: { tmdbId: number; mediaType: string; title: string; year: string; posterPath: string | null; rating: number }) {
     const entry: WatchHistoryItem = {
@@ -66,6 +87,7 @@ export default function UserDashboardPage() {
   const isEmpty =
     data &&
     data.becauseYouWatched.length === 0 &&
+    (data.genreCollections ?? []).length === 0 &&
     data.recommendedForYou.length === 0 &&
     data.notInLibrary.length === 0;
 
@@ -75,11 +97,6 @@ export default function UserDashboardPage() {
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#09090b]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="ghost" size="icon-sm">
-                <ArrowLeft className="size-4" />
-              </Button>
-            </Link>
             <div className="flex items-center gap-2">
               <Film className="size-5 text-purple-400" />
               <h1 className="text-lg font-semibold text-foreground">
@@ -87,7 +104,17 @@ export default function UserDashboardPage() {
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Desktop actions */}
+          <div className="hidden sm:flex items-center gap-2">
+            <Link href="/" onClick={() => {
+              document.cookie = "selectedUserId=;path=/;max-age=0";
+            }}>
+              <Button variant="outline" size="sm">
+                <Users className="size-3.5" />
+                Switch User
+              </Button>
+            </Link>
             <Button
               variant="outline"
               size="sm"
@@ -108,6 +135,62 @@ export default function UserDashboardPage() {
               userId={userId}
               onSyncComplete={fetchRecommendations}
             />
+          </div>
+
+          {/* Mobile overflow menu */}
+          <div className="sm:hidden relative" ref={menuRef}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+            >
+              <MoreVertical className="size-4" />
+            </Button>
+            {showMobileMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-900 border border-white/10 rounded-lg shadow-xl py-1 z-50">
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-white/5 transition-colors"
+                  onClick={() => {
+                    setShowHistory(true);
+                    setShowMobileMenu(false);
+                  }}
+                >
+                  <History className="size-3.5" />
+                  Watch History
+                </button>
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-white/5 transition-colors"
+                  onClick={() => {
+                    setShowRateDialog(true);
+                    setShowMobileMenu(false);
+                  }}
+                >
+                  <Star className="size-3.5" />
+                  Rate a Title
+                </button>
+                <MobileSyncButton
+                  userId={userId}
+                  onSyncComplete={() => {
+                    fetchRecommendations();
+                    setShowMobileMenu(false);
+                  }}
+                />
+                <div className="border-t border-white/10 my-1" />
+                <Link href="/" onClick={() => {
+                  document.cookie = "selectedUserId=;path=/;max-age=0";
+                }}>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-white/5 transition-colors"
+                  >
+                    <Users className="size-3.5" />
+                    Switch User
+                  </button>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -154,31 +237,61 @@ export default function UserDashboardPage() {
         {/* Recommendation sections */}
         {data && !loading && !isEmpty && (
           <>
-            {/* Because you watched rows */}
-            {data.becauseYouWatched.map((group) => (
+            {/* Top 2 "Because you watched" rows */}
+            {data.becauseYouWatched.slice(0, 2).map((group) => (
               <RecommendationRow
                 key={group.sourceTmdbId}
                 group={group}
                 userId={userId}
+                onSelectItem={setSelectedItem}
               />
             ))}
 
-            {/* Recommended for you grid */}
-            {data.recommendedForYou.length > 0 && (
-              <RecommendationGrid
-                title="Recommended for you"
-                items={data.recommendedForYou}
+            {/* Top 2 genre collections */}
+            {(data.genreCollections ?? []).slice(0, 2).map((collection) => (
+              <GenreCollectionRow
+                key={collection.genreId}
+                collection={collection}
                 userId={userId}
+                onSelectItem={setSelectedItem}
+              />
+            ))}
+
+            {/* Dynamic "Because you watched" picker (remaining groups) */}
+            {data.becauseYouWatched.length > 2 && (
+              <BywPickerRow
+                groups={data.becauseYouWatched.slice(2)}
+                userId={userId}
+                onSelectItem={setSelectedItem}
               />
             )}
 
-            {/* Not in library */}
+            {/* Dynamic genre picker (remaining genres) */}
+            {(data.genreCollections ?? []).length > 2 && (
+              <GenrePickerRow
+                collections={(data.genreCollections ?? []).slice(2)}
+                userId={userId}
+                onSelectItem={setSelectedItem}
+              />
+            )}
+
+            {/* Recommended for you (horizontal) */}
+            {data.recommendedForYou.length > 0 && (
+              <TitledScrollRow
+                title="Recommended for you"
+                items={data.recommendedForYou}
+                userId={userId}
+                onSelectItem={setSelectedItem}
+              />
+            )}
+
+            {/* Not in library (horizontal) */}
             {data.notInLibrary.length > 0 && (
-              <RecommendationGrid
+              <TitledScrollRow
                 title="Not in your library"
                 items={data.notInLibrary}
-                emptyMessage="Everything recommended is already in your library!"
                 userId={userId}
+                onSelectItem={setSelectedItem}
               />
             )}
           </>
@@ -190,6 +303,13 @@ export default function UserDashboardPage() {
       )}
       {showRateDialog && (
         <RateTitleDialog userId={userId} onClose={() => setShowRateDialog(false)} onRated={handleRated} />
+      )}
+      {selectedItem && (
+        <MediaDetailModal
+          item={selectedItem}
+          userId={userId}
+          onClose={() => setSelectedItem(null)}
+        />
       )}
     </main>
   );
@@ -228,5 +348,37 @@ function DashboardSkeleton() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Mobile Sync Button (menu-item style) ──────────────────────────────────
+
+function MobileSyncButton({ userId, onSyncComplete }: { userId: string; onSyncComplete: () => void }) {
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/sync?userId=${userId}`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) onSyncComplete();
+    } catch {
+      // ignore
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-white/5 transition-colors disabled:opacity-50"
+      onClick={handleSync}
+      disabled={syncing}
+    >
+      <RefreshCw className={`size-3.5 ${syncing ? "animate-spin" : ""}`} />
+      {syncing ? "Syncing…" : "Sync"}
+    </button>
   );
 }

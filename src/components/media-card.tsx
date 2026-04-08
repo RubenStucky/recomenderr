@@ -1,37 +1,34 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
 import type { ScoredRecommendation } from "@/types";
-import { RequestButton } from "./request-button";
-import { RatingWidget } from "./rating-widget";
 
 interface MediaCardProps {
   item: ScoredRecommendation;
   userId?: string;
+  onSelect?: (item: ScoredRecommendation) => void;
 }
 
-export function MediaCard({ item, userId }: MediaCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
+export function MediaCard({ item, onSelect }: MediaCardProps) {
   const posterUrl = item.posterPath
     ? `https://image.tmdb.org/t/p/w300${item.posterPath}`
     : "/placeholder-poster.svg";
 
   return (
-    <div
-      className="group relative flex-shrink-0 w-[160px] sm:w-[180px] transition-transform duration-200 hover:scale-105"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <button
+      type="button"
+      className="group relative flex-shrink-0 w-[calc(50vw-2rem)] sm:w-[180px] text-left cursor-pointer"
+      onClick={() => onSelect?.(item)}
     >
       {/* Poster */}
-      <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-800 ring-1 ring-white/10 transition-all group-hover:ring-2 group-hover:ring-purple-500/50">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-800 outline outline-1 outline-white/10 sm:group-hover:outline-2 sm:group-hover:outline-purple-500/50 transition-[outline-color] duration-200">
         <Image
           src={posterUrl}
           alt={item.title}
           fill
           className="object-cover"
-          sizes="180px"
+          sizes="(max-width: 640px) 45vw, 180px"
           unoptimized={!item.posterPath}
         />
 
@@ -44,34 +41,11 @@ export function MediaCard({ item, userId }: MediaCardProps) {
           </div>
         )}
 
-        {/* Hover overlay */}
-        <div
-          className={`absolute inset-0 bg-black/80 p-3 flex flex-col justify-end transition-opacity duration-200 ${
-            isHovered ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <p className="text-xs text-zinc-300 line-clamp-4 mb-2">
-            {item.overview || "No description available."}
-          </p>
-          {item.voteAverage > 0 && (
-            <p className="text-xs text-amber-400 mb-2">
-              ★ {item.voteAverage.toFixed(1)}
-            </p>
-          )}
-          {item.inLibrary && userId && (
-            <RatingWidget
-              userId={userId}
-              tmdbId={item.tmdbId}
-              mediaType={item.mediaType}
-            />
-          )}
-          {!item.inLibrary && (
-            <RequestButton
-              tmdbId={item.tmdbId}
-              mediaType={item.mediaType}
-              size="sm"
-            />
-          )}
+        {/* Media type badge */}
+        <div className="absolute top-2 right-2 z-10">
+          <Badge className="bg-black/60 text-white text-[10px] border-0 backdrop-blur-sm">
+            {item.mediaType === "tv" ? "TV" : "Movie"}
+          </Badge>
         </div>
       </div>
 
@@ -80,8 +54,15 @@ export function MediaCard({ item, userId }: MediaCardProps) {
         <p className="text-sm font-medium text-foreground truncate">
           {item.title}
         </p>
-        <p className="text-xs text-muted-foreground">{item.year}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-xs text-muted-foreground">{item.year}</p>
+          {item.voteAverage > 0 && (
+            <p className="text-xs text-amber-400">
+              ★ {item.voteAverage.toFixed(1)}
+            </p>
+          )}
+        </div>
       </div>
-    </div>
+    </button>
   );
 }

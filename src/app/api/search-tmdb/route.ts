@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchMulti } from "@/lib/tmdb";
+import { searchMulti, getTVSeasons } from "@/lib/tmdb";
 import { isInLibrary } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q")?.trim() ?? "";
+    const tvId = searchParams.get("tvId");
+
+    // Fetch TV detail (seasons) by TMDB ID
+    if (tvId) {
+      const seasons = await getTVSeasons(Number(tvId));
+      return NextResponse.json({ seasons });
+    }
 
     if (q.length < 1) {
       return NextResponse.json({ results: [] });

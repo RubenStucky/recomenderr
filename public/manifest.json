@@ -1,0 +1,16 @@
+{
+    "name": "Plex Recommender",
+    "short_name": "Recommender",
+    "description": "Smart recommendations from your Plex watch history",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#09090b",
+    "theme_color": "#09090b",
+    "icons": [
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

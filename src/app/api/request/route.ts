@@ -4,7 +4,7 @@ import { requestMedia } from "@/lib/seerr";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tmdbId, mediaType } = body;
+    const { tmdbId, mediaType, seasons } = body;
 
     if (!tmdbId || !mediaType) {
       return NextResponse.json(
@@ -20,7 +20,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await requestMedia(tmdbId, mediaType);
+    // Validate seasons if provided
+    const validSeasons = Array.isArray(seasons)
+      ? seasons.filter((s): s is number => typeof s === "number" && Number.isInteger(s) && s >= 0)
+      : undefined;
+
+    const result = await requestMedia(tmdbId, mediaType, validSeasons);
     return NextResponse.json(result, {
       status: result.success ? 200 : 500,
     });

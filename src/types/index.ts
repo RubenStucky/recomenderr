@@ -135,8 +135,15 @@ export interface BecauseYouWatched {
   items: ScoredRecommendation[];
 }
 
+export interface GenreCollection {
+  genreName: string;
+  genreId: number;
+  items: ScoredRecommendation[];
+}
+
 export interface RecommendationResult {
   becauseYouWatched: BecauseYouWatched[];
+  genreCollections: GenreCollection[];
   recommendedForYou: ScoredRecommendation[];
   notInLibrary: ScoredRecommendation[];
 }
